@@ -1,0 +1,78 @@
+{
+  "path_timing": {
+    "register->payment": { "min_s": 10, "max_s": 600 },
+    "payment->prompt": { "min_s": 3, "max_s": 900 },
+    "register->prompt": { "min_s": 5, "max_s": 1800 },
+    "payment->cancel_payment": { "min_s": 30, "max_s": 86400 },
+    "cancel_payment->payment": { "min_s": 30, "max_s": 86400 }
+  },
+
+  "similarity": {
+    "simhash_block": 4,
+    "simhash_review": 8,
+    "minhash_near": 0.80,
+    "min_len_gate": 20,
+    "emoji_density_review": 0.20
+  },
+
+  "repetition": {
+    "dup_prompt_window_s": 900,
+    "dup_prompt_max_per_sub": 3,
+    "dup_prompt_cross_sub": {
+      "window_s": 900,
+      "max_unique_subs": 5
+    }
+  },
+
+  "rate_limits": {
+    "per_action_min_gap_s": {
+      "register": 5,
+      "payment": 5,
+      "prompt": 2
+    },
+    "burst": {
+      "window_s": 60,
+      "max_actions": 20
+    }
+  },
+
+  "ip_heuristics": {
+    "ip_churn_per_token": {
+      "window_s": 3600,
+      "max_ips": 3
+    },
+    "ip_fanout": {
+      "window_s": 3600,
+      "max_subs_per_ip": 10
+    },
+    "country_churn": {
+      "window_s": 86400,
+      "max_countries": 2
+    }
+  },
+
+  "coordination": {
+    "shared_txt_hash": {
+      "window_s": 1800,
+      "min_unique_subs": 3,
+      "min_geodiversity": 2
+    },
+    "similarity_cluster": {
+      "window_s": 1800,
+      "min_cluster_size": 4,
+      "max_avg_hamming": 8
+    }
+  },
+
+  "routing": [
+    { "when": "path_timing_bad", "gate": "Too-Fast" },
+    { "when": "per_action_gap_bad", "gate": "Too-Fast" },
+    { "when": "burst_bad", "gate": "Too-Fast" },
+    { "when": "ip_fanout_high", "gate": "Hive" },
+    { "when": "coordination_detected", "gate": "Chorus" },
+    { "when": "sim_near_dup", "gate": "Mirror" },
+    { "when": "sim_kinda_dup", "gate": "Echo" },
+    { "when": "glyph_tiny", "gate": "Glyph" },
+    { "when": "all_clear", "gate": "OK" }
+  ]
+}
