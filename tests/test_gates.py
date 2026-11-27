@@ -1,10 +1,18 @@
-import os, time, subprocess, signal, socket, json, hashlib
+import hashlib
+import json
+import os
+import signal
+import socket
+import subprocess
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
-import random
-import requests
 import redis
+import requests
+
+import gates
 
 PORT = 8081
 BASE = f"http://127.0.0.1:{PORT}"
@@ -16,13 +24,15 @@ STATIC = ROOT / "static"
 LABEL = "prompt_gates"
 NUM_PERM = 128
 
+
 @pytest.fixture(autouse=True)
 def _isolate_redis_each_test():
     r = redis.Redis.from_url(
         os.environ.get("REDIS_URL", REDIS_URL),
-        decode_responses=True
+        decode_responses=True,
     )
     r.flushdb()
+
 
 def wait(host, port, timeout=5.0):
     deadline = time.time() + timeout
@@ -34,11 +44,14 @@ def wait(host, port, timeout=5.0):
             time.sleep(0.05)
     raise RuntimeError(f"server did not open {host}:{port}")
 
+
 def ua_fingerprint(ua: str) -> str:
     return hashlib.sha256(ua.encode("utf-8")).hexdigest()[:16]
 
+
 def sub_for(ua: str, ip="127.0.0.1") -> str:
     return f"{ua_fingerprint(ua)}:{ip}"
+
 
 def get_csrf(session: requests.Session, ua: str):
     resp = session.get(BASE + "/", headers={"User-Agent": ua})
@@ -48,6 +61,7 @@ def get_csrf(session: requests.Session, ua: str):
     vpos = resp.text.find('value="', idx)
     epos = resp.text.find('"', vpos + 7)
     return resp.text[vpos + 7: epos]
+
 
 def extract_user_token(html: str) -> str | None:
     needle = 'name="user_token"'
@@ -60,6 +74,7 @@ def extract_user_token(html: str) -> str | None:
     epos = html.find('"', vpos + 7)
     return html[vpos + 7: epos]
 
+
 def last_gate_for(r: redis.Redis, sub: str) -> str | None:
     key = f"{LABEL}:events:{sub}"
     raw = r.lrange(key, -1, -1)
@@ -68,12 +83,14 @@ def last_gate_for(r: redis.Redis, sub: str) -> str | None:
     evt = json.loads(raw[0])
     return evt.get("gate")
 
+
 @pytest.fixture(scope="session")
 def rconn():
     r = redis.Redis.from_url(REDIS_URL, decode_responses=True)
     r.flushdb()
     yield r
     r.flushdb()
+
 
 @pytest.fixture(scope="session", autouse=True)
 def server(rconn):
@@ -87,7 +104,7 @@ def server(rconn):
         "SECRET": "testsecret",
         "TOKEN_TTL": "300",
         "CSRF_TTL": "120",
-        "LABEL": "prompt_gates"
+        "LABEL": "prompt_gates",
     })
 
     proc = subprocess.Popen(["python3", "server.py"], cwd=str(ROOT), env=env)
@@ -101,39 +118,52 @@ def server(rconn):
         except subprocess.TimeoutExpired:
             proc.kill()
 
+
 def register(session: requests.Session, ua: str) -> str:
     csrf = get_csrf(session, ua)
-    resp = session.post(BASE + "/register",
-                        data={"csrf": csrf},
-                        headers={"User-Agent": ua})
+    resp = session.post(
+        BASE + "/register",
+        data={"csrf": csrf},
+        headers={"User-Agent": ua},
+    )
     resp.raise_for_status()
     tok = extract_user_token(resp.text)
     assert tok, "user_token not found after /register"
     return tok
 
+
 def payment(session: requests.Session, ua: str, tok: str):
     csrf = get_csrf(session, ua)
-    resp = session.post(BASE + "/payment",
-                        data={"csrf": csrf, "user_token": tok},
-                        headers={"User-Agent": ua})
+    resp = session.post(
+        BASE + "/payment",
+        data={"csrf": csrf, "user_token": tok},
+        headers={"User-Agent": ua},
+    )
     resp.raise_for_status()
     return resp
+
 
 def cancel_payment(session: requests.Session, ua: str, tok: str):
     csrf = get_csrf(session, ua)
-    resp = session.post(BASE + "/cancel_payment",
-                        data={"csrf": csrf, "user_token": tok},
-                        headers={"User-Agent": ua})
+    resp = session.post(
+        BASE + "/cancel_payment",
+        data={"csrf": csrf, "user_token": tok},
+        headers={"User-Agent": ua},
+    )
     resp.raise_for_status()
     return resp
 
+
 def submit_prompt(session: requests.Session, ua: str, tok: str, prompt: str):
     csrf = get_csrf(session, ua)
-    resp = session.post(BASE + "/submit",
-                        data={"csrf": csrf, "user_token": tok, "prompt": prompt},
-                        headers={"User-Agent": ua})
+    resp = session.post(
+        BASE + "/submit",
+        data={"csrf": csrf, "user_token": tok, "prompt": prompt},
+        headers={"User-Agent": ua},
+    )
     resp.raise_for_status()
     return resp
+
 
 def test_ok_flow_register_payment_prompt(rconn):
     ua = "UA/ok-flow"
@@ -144,6 +174,7 @@ def test_ok_flow_register_payment_prompt(rconn):
     gate = last_gate_for(rconn, sub_for(ua))
     assert gate == "OK"
 
+
 def test_too_fast_register_to_payment(rconn):
     ua = "UA/too-fast"
     sess = requests.Session()
@@ -152,52 +183,112 @@ def test_too_fast_register_to_payment(rconn):
     gate = last_gate_for(rconn, sub_for(ua))
     assert gate == "Too-Fast"
 
+
+def test_short_unrelated_prompts_do_not_collide(rconn):
+    ua = "UA/short-distinct"
+    sess = requests.Session()
+    tok = register(sess, ua)
+    time.sleep(1.1)
+    payment(sess, ua, tok)
+    time.sleep(1.1)
+    submit_prompt(sess, ua, tok, "hello world")
+    time.sleep(1.1)
+    submit_prompt(sess, ua, tok, "quantum physics")
+    gate = last_gate_for(rconn, sub_for(ua))
+    assert gate not in {"Mirror", "Echo"}
+
+
 def test_near_duplicate_prompts_echo_or_mirror(rconn):
     ua = "UA/dup"
     sess = requests.Session()
     tok = register(sess, ua)
-    time.sleep(1.0)
+    time.sleep(1.1)
     payment(sess, ua, tok)
-    time.sleep(1.0)
-    p1 = "🦊 and graph theory."
-    p2 = "🦊s & graph theory."
-    submit_prompt(sess, ua, tok, p1)
-    time.sleep(1.0)
-    submit_prompt(sess, ua, tok, p2)
+    time.sleep(1.1)
+    submit_prompt(sess, ua, tok, "🦊 and graph theory.")
+    time.sleep(1.1)
+    submit_prompt(sess, ua, tok, "🦊 and graph theory!")
     gate = last_gate_for(rconn, sub_for(ua))
-
     assert gate in {"Mirror", "Echo"}
+
 
 def test_ip_fanout_hive_gate(rconn):
     uas = ["UA/fanout/1", "UA/fanout/2", "UA/fanout/3"]
     sessions = [requests.Session() for _ in uas]
     tokens = []
     for sess, ua in zip(sessions, uas):
-        tok = register(sess, ua); tokens.append(tok)
-        time.sleep(1); payment(sess, ua, tok)
+        tok = register(sess, ua)
+        tokens.append(tok)
+        time.sleep(1.1)
+        payment(sess, ua, tok)
     submit_prompt(sessions[0], uas[0], tokens[0], "fanout test 🌋")
-    time.sleep(1.0)
+    time.sleep(1.1)
     submit_prompt(sessions[1], uas[1], tokens[1], "fanout test ⛰️")
-    time.sleep(1.0)
+    time.sleep(1.1)
     submit_prompt(sessions[2], uas[2], tokens[2], "fanout test 💎")
     gate = last_gate_for(rconn, sub_for(uas[2]))
     assert gate == "Hive"
+
+    resp = submit_prompt(sessions[2], uas[2], tokens[2], "fanout test 💎")
+    gate = last_gate_for(rconn, sub_for(uas[2]))
+    assert gate == "Echo"
+
+
+def test_coordination_requires_geodiversity(rconn, monkeypatch):
+    monkeypatch.setattr(gates, "r", rconn)
+    monkeypatch.setattr(gates, "RULES_FILE", str(RULES))
+    gates._RULES_MTIME = None
+
+    subs = ["ua1:10.0.0.1", "ua2:10.0.0.2", "ua3:10.0.0.3"]
+    for s in subs:
+        rconn.set(f"geo:{s.split(':')[1]}", "US")
+
+    fp = gates.fingerprint_prompt("coordinated identical prompt across nodes")
+    for s in subs:
+        res = gates.check_coordination(s, fp)
+    assert res["coordination_detected"] is False
+
+    rconn.set("geo:10.0.0.4", "DE")
+    res_diverse = gates.check_coordination("ua4:10.0.0.4", fp)
+    assert res_diverse["coordination_detected"] is True
+
+
+def test_atomic_path_timing_under_concurrency(rconn, monkeypatch):
+    monkeypatch.setattr(gates, "r", rconn)
+    monkeypatch.setattr(gates, "RULES_FILE", str(RULES))
+    gates._RULES_MTIME = None
+
+    sub = "ua-race:127.0.0.1"
+    gates.record_and_eval_path_timing(sub, "register", now=100.0)
+
+    def fire_payment():
+        return gates.record_and_eval_path_timing(sub, "payment", now=100.1)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = [f.result() for f in (pool.submit(fire_payment), pool.submit(fire_payment))]
+
+    assert any(r["rule"] == "register->payment" and r["path_timing_bad"] is True for r in results)
+
 
 def test_fast_cancel_is_too_fast(rconn):
     ua = "UA/refund"
     sess = requests.Session()
     tok = register(sess, ua)
-    time.sleep(1.0); payment(sess, ua, tok)
+    time.sleep(1.1)
+    payment(sess, ua, tok)
     cancel_payment(sess, ua, tok)
     gate = last_gate_for(rconn, sub_for(ua))
     assert gate == "Too-Fast"
+
 
 def test_cancel_then_repay_too_fast(rconn):
     ua = "UA/repay"
     sess = requests.Session()
     tok = register(sess, ua)
-    time.sleep(1.0); payment(sess, ua, tok)
-    time.sleep(1.0); cancel_payment(sess, ua, tok)
+    time.sleep(1.1)
+    payment(sess, ua, tok)
+    time.sleep(1.1)
+    cancel_payment(sess, ua, tok)
     payment(sess, ua, tok)
     gate = last_gate_for(rconn, sub_for(ua))
     assert gate == "Too-Fast"

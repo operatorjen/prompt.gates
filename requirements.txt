@@ -1,5 +1,5 @@
 datasketch==1.6.5
-dotenv==0.9.9
+python-dotenv>=1.0.1
 simhash==2.1.2
 pytest==8.4.2
 redis==6.4.0
