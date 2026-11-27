@@ -1,0 +1,42 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Prompt Gates</title>
+<meta content="width=device-width, height=device-height, user-scalable=no, initial-scale=0.95, maximum-scale=0.95, minimum-scale=0.95, target-densitydpi=device-dpi" name="viewport">
+<meta content="yes" name="apple-mobile-web-app-capable">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self';">
+<link rel="stylesheet" href="/static/style.css" />
+
+<body class="__GATE_CLASS__ __AUTH_CLASS__ __PAY_CLASS__">
+  <div id="gate" class="banner __GATE_VISIBLE__">
+    <strong>__GATE_TITLE__</strong>
+    <div>__GATE_LINE__</div>
+  </div>
+
+  <form method="POST" action="/register" class="needs-register">
+    <input type="hidden" name="csrf" value="__CSRF_TOKEN__">
+    <button type="submit">Register (get token)</button>
+  </form>
+
+  <form method="POST" action="/payment" class="requires-token when-unpaid">
+    <input type="hidden" name="csrf" value="__CSRF_TOKEN__">
+    <input type="hidden" name="user_token" value="__USER_TOKEN__">
+    <button type="submit">Gate Transaction</button>
+  </form>
+
+  <div class="requires-token when-paid">
+    <form method="POST" action="/cancel_payment">
+      <input type="hidden" name="csrf" value="__CSRF_TOKEN__">
+      <input type="hidden" name="user_token" value="__USER_TOKEN__">
+      <button type="submit">Cancel Gate Transaction</button>
+    </form>
+  </div>
+
+  <form method="POST" action="/submit" class="requires-token">
+    <input type="hidden" name="csrf" value="__CSRF_TOKEN__">
+    <textarea name="prompt" placeholder="Type your prompt" required></textarea><br>
+    <input type="hidden" name="user_token" value="__USER_TOKEN__">
+    <button type="submit">Which gate wil you reach next?</button>
+  </form>
+
+  <footer><a href="https://github.com/operatorjen/prompt.gates">Source</a></footer>
+</body>

@@ -1,0 +1,29 @@
+{
+  "path_timing": {
+    "register->payment": { "min_s": 1, "max_s": 10 },
+    "payment->prompt": { "min_s": 1, "max_s": 900 },
+    "register->prompt": { "min_s": 1, "max_s": 1800 },
+    "payment->cancel_payment": { "min_s": 1, "max_s": 86400 },
+    "cancel_payment->payment": { "min_s": 1, "max_s": 86400 }
+  },
+  "similarity": {
+    "simhash_block": 4,
+    "simhash_review": 8,
+    "minhash_near": 0.8,
+    "min_len_gate": 40,
+    "emoji_density_review": 0.15
+  },
+  "rate_limits": {
+    "per_action_min_gap_s": { "prompt": 1 },
+    "burst": { "window_s": 1, "max_actions": 2 }
+  },
+  "ip_heuristics": {
+    "ip_churn_per_token": { "window_s": 10, "max_ips": 2 },
+    "ip_fanout": { "window_s": 10, "max_subs_per_ip": 3 },
+    "country_churn": { "window_s": 10, "max_countries": 3 }
+  },
+  "coordination": {
+    "shared_txt_hash": { "window_s": 1, "min_unique_subs": 3, "min_geodiversity": 2 },
+    "similarity_cluster": { "window_s": 1, "min_cluster_size": 4, "max_avg_hamming": 8 }
+  }
+}
