@@ -1,0 +1,5 @@
+datasketch==1.6.5
+dotenv==0.9.9
+simhash==2.1.2
+pytest==8.4.2
+requests==2.32.5
