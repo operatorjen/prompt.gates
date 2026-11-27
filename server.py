@@ -175,7 +175,6 @@ class Handler(BaseHTTPRequestHandler):
         csrf = set_csrf(self)
         html = _index_bytes().decode("utf-8")      
         paid_class = "subscription" if (user_token and is_paid(make_sub(self))) else "free"
-
         html = (html
             .replace("__CSRF_TOKEN__", csrf)
             .replace("__USER_TOKEN__", user_token or "")
@@ -194,7 +193,6 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/static/"):
           rel = os.path.normpath(path[len("/static/"):]).lstrip(os.sep)
           return self._serve_static(rel, self._guess_type(rel))
-
         if path == "/" or path.startswith("/gate/"):
             gate_name = path.split("/", 2)[2] if path.startswith("/gate/") else None
             return self._render_gate(gate_name, None,  status=200, user_token=None)

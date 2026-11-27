@@ -24,7 +24,7 @@ def _isolate_redis_each_test():
     )
     r.flushdb()
 
-def wait_port(host, port, timeout=5.0):
+def wait(host, port, timeout=5.0):
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
@@ -92,7 +92,7 @@ def server(rconn):
 
     proc = subprocess.Popen(["python3", "server.py"], cwd=str(ROOT), env=env)
     try:
-        wait_port("127.0.0.1", PORT, timeout=8.0)
+        wait("127.0.0.1", PORT, timeout=8.0)
         yield proc
     finally:
         proc.send_signal(signal.SIGINT)

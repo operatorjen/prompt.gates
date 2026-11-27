@@ -10,7 +10,7 @@
     "emoji_density_review": 0.15
   },
   "rate_limits": {
-    "per_action_min_gap_s": { "prompt": 2 },
+    "per_action_min_gap_s": { "prompt": 3 },
     "burst": { "window_s": 60, "max_actions": 20 }
   },
   "ip_heuristics": {
